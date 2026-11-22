@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zephyr Stream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  display:flex;flex-direction:column;align-items:center;
+  background:#520707;color:#b8a830;
+  font-family:Inter,system-ui,sans-serif;padding:16px;gap:20px;
+}
+h1{font-size:13px;font-weight:500;letter-spacing:2px;text-transform:uppercase}
+.content{display:flex;align-items:flex-start;justify-content:center;gap:24px;flex-wrap:wrap}
+img{
+  width: 96px;
+  height: 96px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  border-radius:8px;
+  box-shadow:0 12px 40px rgba(0,0,0,.7);
+  background:#111;
+  display:block;
+}
+
+.panel{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:rgba(0,0,0,.18);border:1px solid rgba(184,168,48,.25);
+  border-radius:10px;padding:14px 12px;width:110px;
+}
+.panel-title{
+  font-size:8px;font-weight:500;letter-spacing:.5px;
+  text-transform:uppercase;color:#b8a830;text-align:center;white-space:nowrap;
+}
+
+#BTN_DOWNLOAD{
+  font-family:inherit;font-size:11px;font-weight:600;letter-spacing:1px;
+  text-transform:uppercase;color:#520707;background:#b8a830;
+  border:none;border-radius:6px;padding:10px 14px;width:100%;
+  cursor:pointer;transition:transform .12s,filter .12s;
+}
+#BTN_DOWNLOAD:hover{filter:brightness(1.08)}
+#BTN_DOWNLOAD:active{transform:scale(.94)}
+#BTN_DOWNLOAD.sent{filter:brightness(.85)}
+
+/* Аналог LVGL LED виджета */
+.led{
+  width:50px;height:50px;border-radius:50%;
+  background:#ef4444;border:2px solid #7f1d1d;
+  box-shadow:0 0 0 4px rgba(0,0,0,.18),0 0 0 10px rgba(239,68,68,.3),0 0 20px rgba(239,68,68,.8);
+  transition:background .3s,border-color .3s,box-shadow .3s;
+}
+.led.active{
+  background:#22c55e;border:2px solid #14532d;
+  box-shadow:0 0 0 4px rgba(0,0,0,.18),0 0 0 10px rgba(34,197,94,.3),0 0 20px rgba(34,197,94,.8);
+}
+
+@media (max-width:640px){
+  .content{flex-direction:column;align-items:center}
+  .panel{width:60vw;max-width:160px}
+}
+</style>
+</head>
+<body>
+<h1>Zephyr Stream</h1>
+<div class="content">
+  <img id="v">
+  <div class="panel">
+    <div class="panel-title">Download frame</div>
+    <button type="button" id="BTN_DOWNLOAD">DOWNLOAD</button>
+    <!-- <div class="led" id="led"></div> -->
+  </div>
+</div>
+
+<script>
+const W = 32, H = 32, SCALE = 3;
+
+// Холст для хранения оригинала (32x32) и скачивания
+const C = document.createElement('canvas');
+const X = C.getContext('2d');
+C.width = W; 
+C.height = H;
+
+// Холст для увеличения изображения в 3 раза для вывода на экран (96x96)
+const DC = document.createElement('canvas');
+const DX = DC.getContext('2d');
+DC.width = W * SCALE; 
+DC.height = H * SCALE;
+DX.imageSmoothingEnabled = false; // Отключаем сглаживание для четких пикселей
+
+const V = document.getElementById('v');
+let L = null;
+
+function D(b, o) {
+    const a = new Uint8Array(b), m = new ImageData(W, H), p = m.data;
+    for (let j = o || 0, k = 0; k < W * H; k++, j += 2) {
+        let n = (a[j+1] << 8) | a[j];
+
+        // Младшие 5 бит — СИНИЙ
+        p[k*4]     = ((n >> 11)      * 33) >> 2;  // R
+        p[k*4 + 1] = ((n >> 5  & 63) * 65) >> 4;  // G
+        p[k*4 + 2] = ((n       & 31) * 33) >> 2; // B
+        p[k*4 + 3] = 255;
+    }
+    return m;
+}
+
+// Функция для обновления отображения (растягивание в 3 раза)
+function updateDisplay() {
+    DX.clearRect(0, 0, DC.width, DC.height);
+    DX.drawImage(C, 0, 0, DC.width, DC.height);
+    
+    DC.toBlob(b => {
+        if (!b) return;
+        if (L) URL.revokeObjectURL(L);
+        V.src = L = URL.createObjectURL(b);
+    }, 'image/png', 1);
+}
+
+// Функция для скачивания оригинального изображения (32x32)
+function downloadImage() {
+    C.toBlob(b => {
+        if (!b) return;
+        const url = URL.createObjectURL(b);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'imаge.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 'image/png', 1);
+}
+
+const S = new WebSocket('/');
+S.binaryType = 'arraybuffer';
+
+const btnSet = document.getElementById('BTN_DOWNLOAD');
+
+btnSet.addEventListener('click', () => {
+  S.send(JSON.stringify({type: 'btn_set', value: true}));
+  btnSet.classList.add('sent');
+  setTimeout(() => btnSet.classList.remove('sent'), 180);
+  
+  // Скачивание при клике по кнопке
+  downloadImage();
+});
+
+S.onmessage = e => {
+  if (e.data instanceof ArrayBuffer) {
+    X.putImageData(D(e.data, 1), 0, 0);
+    updateDisplay();
+    return;
+  }
+  try {
+    const obj = JSON.parse(e.data);
+    // Скачивание при получении сообщения {type: 'state', value: true}
+    if (obj.type === 'state') {
+      downloadImage();
+    }
+  } catch (err) {}
+};
+</script>
+</body>
+</html>
