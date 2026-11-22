@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zephyr Stream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	background:#520707;
+	color:#b8a830;
+	font-family:Inter,system-ui,sans-serif;
+	padding:16px;
+	gap:20px;
+}
+h1{
+	font-size:13px;
+	font-weight:500;
+	letter-spacing:2px;
+	text-transform:uppercase;
+}
+
+.content{
+	display:flex;
+	flex-direction:row;
+	align-items:center;
+	justify-content:center;
+	gap:24px;
+	flex-wrap:wrap;
+}
+img{max-width:80vw;max-height:80vh;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.7);background:#111;display:block}
+
+/* Панель слайдеров - в палитре страницы, без отдельной "белой карточки". */
+.panel{
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	justify-content:center;
+	gap:11px;
+	background:rgba(0,0,0,.18);
+	border:1px solid rgba(184,168,48,.25);
+	border-radius:10px;
+	padding:10px 8px;
+	width:110px;
+}
+.slider-row{display:flex;flex-direction:column;align-items:center;gap:3px;width:90%}
+.slider-row .label{
+	display:flex;
+	align-items:center;
+	gap:3px;
+	font-size:8px;
+	font-weight:500;
+	letter-spacing:.5px;
+	text-transform:uppercase;
+	color:#b8a830;
+	white-space:nowrap;
+}
+/* Маленькая цветная точка вместо цветного текста - различает слайдеры,
+   не превращая панель в пёструю. */
+.slider-row .dot{
+	width:5px;
+	height:5px;
+	border-radius:50%;
+	background:var(--accent);
+	flex:none;
+}
+.slider-row input[type="range"]{
+	width:100%;
+	height:10px;
+	-webkit-appearance:none;
+	appearance:none;
+	background:transparent;
+	cursor:pointer;
+}
+/* Трек */
+.slider-row input[type="range"]::-webkit-slider-runnable-track{
+	height:3px;
+	border-radius:1.5px;
+	background:rgba(184,168,48,.3);
+}
+.slider-row input[type="range"]::-moz-range-track{
+	height:3px;
+	border-radius:1.5px;
+	background:rgba(184,168,48,.3);
+}
+/* Бегунок цвета акцента (совпадает с точкой), тонкая тёмная окантовка -
+   в тон фону страницы, а не белая, как раньше. */
+.slider-row input[type="range"]::-webkit-slider-thumb{
+	-webkit-appearance:none;
+	width:10px;
+	height:10px;
+	border-radius:50%;
+	background:var(--accent);
+	border:1px solid #520707;
+	box-shadow:0 0 0 1px rgba(184,168,48,.4);
+	margin-top:-3.5px;
+}
+.slider-row input[type="range"]::-moz-range-thumb{
+	width:10px;
+	height:10px;
+	border-radius:50%;
+	background:var(--accent);
+	border:1px solid #520707;
+	box-shadow:0 0 0 1px rgba(184,168,48,.4);
+}
+
+@media (max-width:640px){
+	.content{flex-direction:column}
+	.panel{width:60vw;max-width:160px}
+}
+</style>
+</head>
+<body>
+<h1>Zephyr Stream</h1>
+
+<div class="content">
+	<img id="v">
+
+	<div class="panel">
+		<div class="slider-row" style="--accent:#E85D5D">
+			<span class="label"><span class="dot"></span><span id="id_show_slider_red_balance">RED BALANCE: 1.0</span></span>
+			<input type="range" min="0" max="20" value="10" step="1" id="id_slider_red_balance">
+		</div>
+		<div class="slider-row" style="--accent:#3FA37E">
+			<span class="label"><span class="dot"></span><span id="id_show_slider_blue_balance">BLUE BALANCE: 1.0</span></span>
+			<input type="range" min="0" max="20" value="10" step="1" id="id_slider_blue_balance">
+		</div>
+		<div class="slider-row" style="--accent:#4A90D9">
+			<span class="label"><span class="dot"></span><span id="id_show_slider_gamma_level">GAMMA LEVEL: 0.0</span></span>
+			<input type="range" min="0" max="20" value="0" step="1" id="id_slider_gamma_level">
+		</div>
+	</div>
+</div>
+
+<script>
+const W=160,H=120,C=document.createElement('canvas'),X=C.getContext('2d'),V=document.getElementById('v');
+C.width=W;C.height=H;
+let L=null;
+
+        function D(b, o) {
+            const a = new Uint8Array(b), m = new ImageData(W, H), p = m.data;
+            for (let j = o || 0, k = 0; k < W * H; k++, j += 2) {
+                let n = (a[j+1] << 8) | a[j];
+
+                // Младшие 5 бит — СИНИЙ
+                p[k*4]     = ((n >> 11)      * 33) >> 2;  // R
+                p[k*4 + 1] = ((n >> 5  & 63) * 65) >> 4;  // G
+                p[k*4 + 2] = ((n        & 31) * 33) >> 2; // B
+                p[k*4 + 3] = 255;
+            }
+            return m;
+        }
+
+const S=new WebSocket('/');
+S.binaryType='arraybuffer';
+
+/** Задать значение параметра через ползунок. **/
+// Дублируем три слайдера LVGL (RED BALANCE, BLUE BALANCE, GAMMA LEVEL).
+// Диапазон (0..20) и стартовое значение (10) полностью повторяют
+// create_slider_ui(panel, "...", 0, 20, 10, ...) в ui_thread.c,
+// а отображаемое значение - тот же float value/10.0, что и в slider_event_cb().
+const sliders = [
+	{
+		type: 'red_balance',
+		input: document.getElementById('id_slider_red_balance'),
+		show: document.getElementById('id_show_slider_red_balance'),
+		name: 'RED BALANCE'
+	},
+	{
+		type: 'blue_balance',
+		input: document.getElementById('id_slider_blue_balance'),
+		show: document.getElementById('id_show_slider_blue_balance'),
+		name: 'BLUE BALANCE'
+	},
+	{
+		type: 'gamma_level',
+		input: document.getElementById('id_slider_gamma_level'),
+		show: document.getElementById('id_show_slider_gamma_level'),
+		name: 'GAMMA LEVEL'
+	}
+];
+
+function formatLabel(name, raw_value) {
+	return name + ': ' + (raw_value / 10.0).toFixed(1);
+}
+
+sliders.forEach(function (s) {
+	// При перемещении ползунка отправить новое значение на контроллер.
+	// 'input' даёт живое обновление подписи, 'change' - отправку на сокет
+	// (аналог LV_EVENT_VALUE_CHANGED, который у LVGL стреляет по отпусканию).
+	s.input.addEventListener('input', function () {
+		s.show.innerHTML = formatLabel(s.name, s.input.value);
+	});
+	s.input.addEventListener('change', function () {
+		var msg = {type: s.type, value: s.input.value};
+		// Сокет используется совместно с видеопотоком, поэтому шлём JSON-строку,
+		// а не бинарные данные - на стороне контроллера типы легко различимы.
+		S.send(JSON.stringify(msg));
+	});
+});
+
+S.onmessage = function(e) {
+	// Видеокадры приходят как ArrayBuffer (бинарные данные, см. binaryType выше).
+	if (e.data instanceof ArrayBuffer) {
+		X.putImageData(D(e.data, 1), 0, 0);
+		C.toBlob(function(b) {
+			if (!b) return;
+			L && URL.revokeObjectURL(L);
+			V.src = L = URL.createObjectURL(b);
+		}, 'image/jpeg', 1.0);
+		return;
+	}
+
+	// Служебные команды (в т.ч. значения слайдеров) приходят как текстовый JSON.
+	var obj;
+	try {
+		obj = JSON.parse(e.data);
+	} catch (err) {
+		return;
+	}
+	var type = obj.type;
+
+	// Ищем слайдер по типу и синхронизируем его положение/подпись со
+	// значением, пришедшим с контроллера (например, если его подвинули
+	// на самом LVGL-дисплее, а не в браузере).
+	var s = sliders.find(function (item) { return item.type.localeCompare(type) == 0; });
+	if (s) {
+		// Принимаем значение ползунка с контроллера.
+		var raw_value = parseInt(obj.value);
+		// Обновляем ползунок.
+		s.input.value = raw_value;
+		// Обновляем отображение значения ползунка на вебстраничке.
+		s.show.innerHTML = formatLabel(s.name, raw_value);
+	}
+};
+</script>
+</body>
+</html>
