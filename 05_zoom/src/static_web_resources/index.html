@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zephyr Stream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	background:#520707;
+	color:#b8a830;
+	font-family:Inter,system-ui,sans-serif;
+	padding:16px;
+	gap:20px;
+}
+h1{
+	font-size:13px;
+	font-weight:500;
+	letter-spacing:2px;
+	text-transform:uppercase;
+}
+
+.content{
+	display:flex;
+	flex-direction:row;
+	align-items:center;
+	justify-content:center;
+	gap:24px;
+	flex-wrap:wrap;
+}
+img{max-width:80vw;max-height:80vh;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.7);background:#111;display:block}
+
+/* Панель слайдеров - в палитре страницы, без отдельной "белой карточки". */
+.panel{
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	justify-content:center;
+	gap:11px;
+	background:rgba(0,0,0,.18);
+	border:1px solid rgba(184,168,48,.25);
+	border-radius:10px;
+	padding:10px 8px;
+	width:110px;
+}
+
+.slider-row{display:flex;flex-direction:column;align-items:center;gap:3px;width:90%}
+.slider-row .label{
+	display:flex;
+	align-items:center;
+	gap:3px;
+	font-size:8px;
+	font-weight:500;
+	letter-spacing:.5px;
+	text-transform:uppercase;
+	color:#b8a830;
+	white-space:nowrap;
+}
+/* Маленькая цветная точка вместо цветного текста - различает слайдеры,
+   не превращая панель в пёструю. */
+.slider-row .dot{
+	width:5px;
+	height:5px;
+	border-radius:50%;
+	background:var(--accent);
+	flex:none;
+}
+.slider-row input[type="range"]{
+	width:100%;
+	height:10px;
+	-webkit-appearance:none;
+	appearance:none;
+	background:transparent;
+	cursor:pointer;
+}
+/* Трек */
+.slider-row input[type="range"]::-webkit-slider-runnable-track{
+	height:3px;
+	border-radius:1.5px;
+	background:rgba(184,168,48,.3);
+}
+.slider-row input[type="range"]::-moz-range-track{
+	height:3px;
+	border-radius:1.5px;
+	background:rgba(184,168,48,.3);
+}
+/* Бегунок цвета акцента (совпадает с точкой), тонкая тёмная окантовка -
+   в тон фону страницы. */
+.slider-row input[type="range"]::-webkit-slider-thumb{
+	-webkit-appearance:none;
+	width:10px;
+	height:10px;
+	border-radius:50%;
+	background:var(--accent);
+	border:1px solid #520707;
+	box-shadow:0 0 0 1px rgba(184,168,48,.4);
+	margin-top:-3.5px;
+}
+.slider-row input[type="range"]::-moz-range-thumb{
+	width:10px;
+	height:10px;
+	border-radius:50%;
+	background:var(--accent);
+	border:1px solid #520707;
+	box-shadow:0 0 0 1px rgba(184,168,48,.4);
+}
+
+/* Два input[type=range] внахлёст - под HSV range-слайдеры (min+max в одном ряду).
+   Идёт ПОСЛЕ .slider-row input[type="range"], чтобы position/height здесь не
+   перебивались более общими правилами выше по каскаду. */
+.dual-slider{position:relative;width:100%;height:16px}
+.dual-slider input[type="range"]{
+	position:absolute;left:0;top:0;width:100%;height:16px;
+	margin:0;background:transparent;pointer-events:none;
+}
+.dual-slider input[type="range"]::-webkit-slider-thumb{pointer-events:auto}
+.dual-slider input[type="range"]::-moz-range-thumb{pointer-events:auto}
+/* Трек рисуем только у нижнего (min) input'а, у верхнего (max) - прозрачный,
+   иначе он перекроет собой трек min-слайдера. */
+.dual-slider input[type="range"]:last-child::-webkit-slider-runnable-track{background:transparent}
+.dual-slider input[type="range"]:last-child::-moz-range-track{background:transparent}
+
+@media (max-width:640px){
+	.content{flex-direction:column}
+	.panel{width:60vw;max-width:160px}
+}
+</style>
+</head>
+<body>
+<h1>Zephyr Stream</h1>
+
+<div class="content">
+	<img id="v">
+
+	<div class="panel">
+		<div class="slider-row" style="--accent:#3FA37E">
+			<span class="label"><span class="dot"></span><span id="id_show_width">WIDTH: 0 - 160</span></span>
+			<div class="dual-slider">
+				<input type="range" min="0" max="160" value="0"   step="1" id="id_slider_width_min">
+				<input type="range" min="0" max="160" value="160" step="1" id="id_slider_width_max">
+			</div>
+		</div>
+		<div class="slider-row" style="--accent:#4A90D9">
+			<span class="label"><span class="dot"></span><span id="id_show_height">HEIGHT: 0 - 120</span></span>
+			<div class="dual-slider">
+				<input type="range" min="0" max="120" value="0"   step="1" id="id_slider_height_min">
+				<input type="range" min="0" max="120" value="120" step="1" id="id_slider_height_max">
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+const W=160,H=120,C=document.createElement('canvas'),X=C.getContext('2d'),V=document.getElementById('v');
+C.width=W;C.height=H;
+let L=null;
+        function D(b, o) {
+            const a = new Uint8Array(b), m = new ImageData(W, H), p = m.data;
+            for (let j = o || 0, k = 0; k < W * H; k++, j += 2) {
+                let n = (a[j+1] << 8) | a[j];
+
+                // Младшие 5 бит — СИНИЙ
+                p[k*4]     = ((n >> 11)      * 33) >> 2;  // R
+                p[k*4 + 1] = ((n >> 5  & 63) * 65) >> 4;  // G
+                p[k*4 + 2] = ((n        & 31) * 33) >> 2; // B
+                p[k*4 + 3] = 255;
+            }
+            return m;
+        }
+
+const S=new WebSocket('/');
+S.binaryType='arraybuffer';
+
+/** HSV range-слайдеры (Hue/Sat/Val), два input[type=range] на канал (min+max). **/
+const zoomSliders = [
+	{ type: 'width', min: document.getElementById('id_slider_width_min'),
+	  max: document.getElementById('id_slider_width_max'),
+	  show: document.getElementById('id_show_width'), name: 'WIDTH' },
+	{ type: 'height', min: document.getElementById('id_slider_height_min'),
+	  max: document.getElementById('id_slider_height_max'),
+	  show: document.getElementById('id_show_height'), name: 'HEIGHT' }
+];
+
+function formatRangeLabel(name, min_v, max_v) {
+	return name + ': ' + min_v + ' - ' + max_v;
+}
+
+zoomSliders.forEach(function (s) {
+	function syncAndShow() {
+		// Не даём ручкам поменяться местами - двигаемую ручку прижимаем к соседней.
+		if (parseInt(s.min.value) > parseInt(s.max.value)) {
+			if (document.activeElement === s.min) { s.min.value = s.max.value; }
+			else { s.max.value = s.min.value; }
+		}
+		s.show.innerHTML = formatRangeLabel(s.name, s.min.value, s.max.value);
+	}
+	function sendRange() {
+		S.send(JSON.stringify({ type: s.type, min: s.min.value, max: s.max.value }));
+	}
+	s.min.addEventListener('input', syncAndShow);
+	s.max.addEventListener('input', syncAndShow);
+	s.min.addEventListener('change', sendRange);
+	s.max.addEventListener('change', sendRange);
+});
+
+S.onmessage = function(e) {
+	// Видеокадры приходят как ArrayBuffer (бинарные данные, см. binaryType выше).
+	if (e.data instanceof ArrayBuffer) {
+		X.putImageData(D(e.data, 1), 0, 0);
+		C.toBlob(function(b) {
+			if (!b) return;
+			L && URL.revokeObjectURL(L);
+			V.src = L = URL.createObjectURL(b);
+		}, 'image/jpeg', 1.0);
+		return;
+	}
+
+	// Служебные команды (значения HSV-слайдеров) приходят как текстовый JSON.
+	var obj;
+	try {
+		obj = JSON.parse(e.data);
+	} catch (err) {
+		return;
+	}
+	var type = obj.type;
+
+	// Ищем HSV-слайдер по типу и синхронизируем его положение/подпись со
+	// значением, пришедшим с контроллера (например, если его подвинули
+	// на самом LVGL-дисплее, а не в браузере).
+	var hs = zoomSliders.find(function (item) { return item.type.localeCompare(type) == 0; });
+	if (hs) {
+		hs.min.value = parseInt(obj.min);
+		hs.max.value = parseInt(obj.max);
+		hs.show.innerHTML = formatRangeLabel(hs.name, obj.min, obj.max);
+	}
+};
+</script>
+</body>
+</html>
