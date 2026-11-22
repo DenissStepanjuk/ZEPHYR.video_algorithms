@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zephyr Stream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+	display:flex;
+	flex-direction:column;
+	align-items:center;
+	background:#520707;
+	color:#b8a830;
+	font-family:Inter,system-ui,sans-serif;
+	padding:16px;
+	gap:20px;
+}
+h1{
+	font-size:13px;
+	font-weight:500;
+	letter-spacing:2px;
+	text-transform:uppercase;
+}
+
+.content{
+	display:flex;
+	flex-direction:row;
+	align-items:center;
+	justify-content:center;
+	gap:24px;
+	flex-wrap:wrap;
+}
+img{max-width:80vw;max-height:80vh;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.7);background:#111;display:block}
+
+
+@media (max-width:640px){
+	.content{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<h1>Zephyr Stream</h1>
+
+<div class="content">
+	<img id="v">
+</div>
+
+<script>
+const W=160,H=120,C=document.createElement('canvas'),X=C.getContext('2d'),V=document.getElementById('v');
+C.width=W;C.height=H;
+let L=null;
+
+        function D(b, o) {
+            const a = new Uint8Array(b), m = new ImageData(W, H), p = m.data;
+            for (let j = o || 0, k = 0; k < W * H; k++, j += 2) {
+                let n = (a[j+1] << 8) | a[j];
+
+                // Младшие 5 бит — СИНИЙ
+                p[k*4]     = ((n >> 11)      * 33) >> 2;  // R
+                p[k*4 + 1] = ((n >> 5  & 63) * 65) >> 4;  // G
+                p[k*4 + 2] = ((n        & 31) * 33) >> 2; // B
+                p[k*4 + 3] = 255;
+            }
+            return m;
+        }
+
+const S=new WebSocket('/');
+S.binaryType='arraybuffer';
+
+
+S.onmessage = function(e) {
+	// Видеокадры приходят как ArrayBuffer (бинарные данные, см. binaryType выше).
+	if (e.data instanceof ArrayBuffer) {
+		X.putImageData(D(e.data, 1), 0, 0);
+		C.toBlob(function(b) {
+			if (!b) return;
+			L && URL.revokeObjectURL(L);
+			V.src = L = URL.createObjectURL(b);
+		}, 'image/jpeg', 1.0);
+		return;
+	}
+};
+</script>
+</body>
+</html>
