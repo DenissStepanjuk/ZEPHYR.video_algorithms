@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zephyr Stream</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  display:flex;flex-direction:column;align-items:center;
+  background:#520707;color:#b8a830;
+  font-family:Inter,system-ui,sans-serif;padding:16px;gap:20px;
+}
+h1{font-size:13px;font-weight:500;letter-spacing:2px;text-transform:uppercase}
+.content{display:flex;align-items:flex-start;justify-content:center;gap:24px;flex-wrap:wrap}
+img{max-width:80vw;max-height:80vh;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.7);background:#111;display:block}
+
+.panel{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:rgba(0,0,0,.18);border:1px solid rgba(184,168,48,.25);
+  border-radius:10px;padding:14px 12px;width:110px;
+}
+.panel-title{
+  font-size:8px;font-weight:500;letter-spacing:.5px;
+  text-transform:uppercase;color:#b8a830;text-align:center;white-space:nowrap;
+}
+
+#BTN_SET{
+  font-family:inherit;font-size:11px;font-weight:600;letter-spacing:1px;
+  text-transform:uppercase;color:#520707;background:#b8a830;
+  border:none;border-radius:6px;padding:10px 14px;width:100%;
+  cursor:pointer;transition:transform .12s,filter .12s;
+}
+#BTN_SET:hover{filter:brightness(1.08)}
+#BTN_SET:active{transform:scale(.94)}
+#BTN_SET.sent{filter:brightness(.85)}
+
+/* Аналог LVGL LED виджета */
+.led{
+  width:50px;height:50px;border-radius:50%;
+  background:#ef4444;border:2px solid #7f1d1d;
+  box-shadow:0 0 0 4px rgba(0,0,0,.18),0 0 0 10px rgba(239,68,68,.3),0 0 20px rgba(239,68,68,.8);
+  transition:background .3s,border-color .3s,box-shadow .3s;
+}
+.led.active{
+  background:#22c55e;border:2px solid #14532d;
+  box-shadow:0 0 0 4px rgba(0,0,0,.18),0 0 0 10px rgba(34,197,94,.3),0 0 20px rgba(34,197,94,.8);
+}
+
+@media (max-width:640px){
+  .content{flex-direction:column;align-items:center}
+  .panel{width:60vw;max-width:160px}
+}
+</style>
+</head>
+<body>
+<h1>Zephyr Stream</h1>
+<div class="content">
+  <img id="v">
+  <div class="panel">
+    <div class="panel-title">Reference frame</div>
+    <button type="button" id="BTN_SET">SET</button>
+    <div class="led" id="led"></div>
+  </div>
+</div>
+
+<script>
+const W=160,H=120,C=document.createElement('canvas'),X=C.getContext('2d'),V=document.getElementById('v');
+C.width=W;C.height=H;let L=null;
+
+        function D(b, o) {
+            const a = new Uint8Array(b), m = new ImageData(W, H), p = m.data;
+            for (let j = o || 0, k = 0; k < W * H; k++, j += 2) {
+                let n = (a[j+1] << 8) | a[j];
+
+                // Младшие 5 бит — СИНИЙ
+                p[k*4]     = ((n >> 11)      * 33) >> 2;  // R
+                p[k*4 + 1] = ((n >> 5  & 63) * 65) >> 4;  // G
+                p[k*4 + 2] = ((n        & 31) * 33) >> 2; // B
+                p[k*4 + 3] = 255;
+            }
+            return m;
+        }
+
+const S=new WebSocket('/');
+S.binaryType='arraybuffer';
+
+const btnSet=document.getElementById('BTN_SET');
+
+btnSet.addEventListener('click',()=>{
+ S.send(JSON.stringify({type:'btn_set',value:true}));
+ btnSet.classList.add('sent');
+ setTimeout(()=>btnSet.classList.remove('sent'),180);
+});
+
+S.onmessage=e=>{
+ if(e.data instanceof ArrayBuffer){
+  X.putImageData(D(e.data,1),0,0);
+  C.toBlob(b=>{if(!b)return;L&&URL.revokeObjectURL(L);V.src=L=URL.createObjectURL(b);},'image/jpeg',1);
+  return;
+ }
+ try {
+   const obj = JSON.parse(e.data);
+   if(obj.type==='state'){
+     document.getElementById('led').classList.toggle('active',!!obj.value);
+   }
+ } catch(err){}
+};
+</script>
+</body>
+</html>

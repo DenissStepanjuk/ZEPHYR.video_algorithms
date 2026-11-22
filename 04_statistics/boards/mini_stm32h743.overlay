@@ -1,0 +1,410 @@
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// west build -p always -b mini_stm32h743 -- -DDTC_OVERLAY_FILE=boards/mini_stm32h743.overlay -DEXTRA_CONF_FILE=boards/mini_stm32h743.conf
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+/* Узел chosen - узел для указания Zephyr, какие устройства использовать в этом приложении. */
+/ {
+	chosen {
+		/*
+		Свойство zephyr,camera -  Ключ (property name) в формате vendor,property
+			- vendor = zephyr (производитель/namespace)
+			- property = camera (сущность, которую описывает свойство)
+		Присваивание значения - phandle (указатель на узел)
+			- & - оператор взятия ссылки на узел
+			- zephyr_camera_dvp - label (метка) другого узла в DTS */
+		zephyr,camera = &zephyr_camera_dvp;
+	};
+};
+
+
+
+/*
+Ссылка на существующий узел I2C:
+	- & - оператор ссылки на узел
+	- zephyr_camera_i2c - label узла I2C шины (псевдоним (alias) для узла,позволяет ссылаться на узел не по полному пути) */
+&zephyr_camera_i2c {
+	// Включение I2C (Булевое свойство (со строковым значением) для управления состоянием устройства).
+	status = "okay";
+	// Частота работы I2C шины в Герцах. (I2C_BITRATE_FAST = 400000 (400 kHz (400,000 Hz)))
+	clock-frequency = <I2C_BITRATE_FAST>;
+
+	/*
+	Объявление узла OV2640 камеры
+		- ov2640: - Label (метка) для этого узла
+		- ov2640@30 - Имя узла в формате name@unit-address
+			+ ov2640 - имя (произвольное, описательное)
+			+ @ - разделитель
+			+ 30 - unit address (адрес устройства на шине), взят из datasheet для OV2640.*/
+	ov2640: ov2640@30 {
+		//  Связать устройство с драйвером камеры "ovti,ov2640".
+		compatible = "ovti,ov2640";
+		// Адрес устройства на шине I2C, взят из datasheet для OV2640.
+		reg = <0x30>;
+		// Включение камеры OV2640 (Булевое свойство (со строковым значением) для управления состоянием устройства).
+		status = "okay";
+		// GPIO пин для управления питанием камеры (8 - номер пина в connector)
+		supply-gpios = <&dcmi_camera_connector 8 GPIO_ACTIVE_HIGH>;
+		// Дополнительный контроль частоты, специфичное для OV2640 свойство.
+		clock-rate-control = <0x80>;
+
+		/*
+		Узел port - Video Graph binding.
+			- Специальная структура для описания видео-потоков, описывает соединения между видео-компонентами.*/
+		port {
+			/*
+			Узел endpoint - точка подключения
+				- ov2640_ep_out: - Label для endpoint (ep = endpoint, out = выходной (от камеры наружу))
+				- endpoint - стандартное имя узла для Video Graph*/
+			ov2640_ep_out: endpoint {
+				// Связь с другим endpoint, указывает на label endpoint на другой стороне соединения.
+				remote-endpoint-label = "zephyr_camera_dvp_in";
+			};
+		};
+	};
+};
+
+
+
+/*
+DCMI (Digital Camera Module Interface (аппаратный модуль для захвата видео, принимает параллельный поток от камеры))
+DVP (Digital Video Port (параллельный интерфейс камеры))
+	- &zephyr_camera_dvp  - ссылка на DCMI контроллер */
+&zephyr_camera_dvp {
+	// Включение DCMI контроллера (Булевое свойство (со строковым значением) для управления состоянием устройства).
+	status = "okay";
+
+	/*
+	Узел port - Video Graph binding.
+		- Специальная структура для описания видео-потоков, описывает соединения между видео-компонентами. */
+	port {
+		/*
+		Узел endpoint - точка подключения
+			- zephyr_camera_dvp_in: - Label для endpoint
+			- endpoint - стандартное имя узла для Video Graph*/
+		zephyr_camera_dvp_in: endpoint {
+			// Указывает на камеру: Данные от ov2640_ep_out поступают сюда
+			remote-endpoint-label = "ov2640_ep_out";
+			// Ширина шины данных, количество линий данных между камерой и DCMI (8-bit параллельная шина)
+			bus-width = <8>;
+			// Камера подает импульс в начале каждой горизонтальной линии пикселей (Полярность [<0> = low, <1> = high])
+			hsync-active = <0>;
+			// Камера подает импульс в начале каждого кадра (Полярность [<0> = low, <1> = high])
+			vsync-active = <0>;
+			// На каком фронте Pixel Clock захватывать данные ([<0> = falling edge, <1> = rising edge])
+			pclk-sample = <1>;
+		};
+	};
+};
+
+
+
+/*
+СИСТЕМА ТАКТИРОВАНИЯ (RCC - Reset and Clock Control) (AN5020 - Rev 3)
+	- Тактовые частоты AHB должны соответствовать минимальному соотношению (AHB / DCMI_PIXCLK) равному 2.5.
+	- Частота PCLK OV2640 составляет около 72 МГц для разрешения QQVGA (160x120) с MCO1_SEL_HSI48 и MCO_PRE_DIV_4.*/
+&rcc {
+	// Указывает источник тактового сигнала для системы (<&pll> - phandle на узел PLL)
+	clocks = <&pll>;
+	// Целевая частота, желаемая частота системного clock в Герцах
+	clock-frequency = <DT_FREQ_M(240)>;
+	// clock-frequency = <DT_FREQ_M(120)>;
+	// D1 Domain Core Prescaler (<1> = делитель на 1 (без деления))
+	d1cpre = <1>;
+	// AHB Prescaler - делитель для частоты AHB шины (<1> = делитель на 1 (без деления))
+	hpre = <1>;
+	// D1 Domain APB3 Prescaler - делитель для APB3 шины (<2> = делить на 2)
+	d1ppre = <2>;
+	// D2 Domain APB1 Prescaler - делитель для APB1 шины (<2> = делить на 2)
+	d2ppre1 = <2>;
+	// D2 Domain APB2 Prescaler - делитель для APB2 шины (<2> = делить на 2)
+	d2ppre2 = <2>;
+	// D3 Domain APB4 Prescaler - делитель для APB4 шины (<2> = делить на 2)
+	d3ppre = <2>;
+};
+
+
+
+/*
+MCO (Master Clock Output) - выход тактового сигнала на GPIO пин */
+&mco1 {
+	// Включение устройства (теперь MCO1 будет генерировать clock на PA8).
+	status = "okay";
+	/* Указывает источник тактового сигнала
+		- <&rcc ...> - Phandle на RCC с дополнительными аргументами
+		- STM32_SRC_HSI48 - Идентификатор источника clock (Встроенный RC oscillator)
+		- MCO1_SEL(MCO1_SEL_HSI48) - Selector для MCO1 multiplexer*/
+	clocks = <&rcc STM32_SRC_HSI48 MCO1_SEL(MCO1_SEL_HSI48)>;
+	//  Коэффициент деления выходной частоты MCO1 (MCO_PRE_DIV_4 - делить на 4)
+	prescaler = <MCO1_PRE(MCO_PRE_DIV_6)>;
+	// prescaler = <MCO1_PRE(MCO_PRE_DIV_4)>;
+	// Ссылка на конфигурацию пина для MCO1
+	pinctrl-0 = <&rcc_mco_1_pa8>;
+	//  Список имен для состояний pinctrl
+	pinctrl-names = "default";
+};
+
+
+/*  DMA (Direct Memory Access) КОНФИГУРАЦИЯ*/
+&dma1 {
+	// Включение DMA1
+	status = "okay";
+};
+
+
+
+/* DMA Multiplexer - маршрутизирует запросы от периферии к DMA streams*/
+&dmamux1 {
+	status = "okay";
+};
+
+
+
+/* ----------------------|  Display  |---------------------  */
+/*
+ * Overlay для подключения дисплея ST7796S (320x480) к плате mini_stm32h743.
+ *
+ * СХЕМА ПОДКЛЮЧЕНИЯ (дисплей → STM32H743):
+ * ==========================================
+ *  VCC   → 3.3V
+ *  GND   → GND
+ *  CS    → PE11  (SPI4_NSS, GPIO_ACTIVE_LOW)
+ *  RESET → PE15  (GPIO_ACTIVE_LOW)
+ *  DC/RS → PE9  (GPIO_ACTIVE_HIGH)
+ *  SDI   → PE14  (SPI4_MOSI)
+ *  SCK   → PE12  (SPI4_SCK)
+ *  LED   → 3.3V  (или на PWM пин для управления яркостью)
+ *  SDO   → не подключать (MISO не нужен для записи)
+ *
+ * ПРИМЕЧАНИЕ по пинам:
+ *   SPI4 (SCK=PE12, MOSI=PE14) и CS=PE11 уже сконфигурированы в базовом DTS
+ *   для встроенного дисплея ST7735R — мы переиспользуем те же физические пины.
+ *   DC=PE13 — также переиспользуем.
+ *   RESET=PE15 — свободный GPIO, не занят в базовой конфигурации платы.
+ *
+ * ШАГ 1: Отключаем встроенный дисплей ST7735R.
+ * ШАГ 2: Переключаем chosen,zephyr,display на новый ST7796S.
+ * ШАГ 3: Объявляем новый узел mipi_dbi + ST7796S.
+ *   (spi4 и его pinctrl не трогаем — они уже настроены в базовом DTS.)
+ */
+
+#include <zephyr/dt-bindings/mipi_dbi/mipi_dbi.h>
+
+/* ── ШАГ 1: Отключить встроенный дисплей ST7735R ─────────────────────── */
+&st7735r_160x80 {
+	status = "disabled";
+};
+
+/ {
+	/* ── ШАГ 2: Обновить chosen ────────────────────────────────────────── */
+	chosen {
+		zephyr,display = &st7796s_320x480;
+	};
+
+	/* ── ШАГ 3: Транспортный узел MIPI DBI → SPI4 ──────────────────────
+	 *
+	 * Этот узел играет ту же роль, что mipi_dbi_st7735r_160x80 в базовом
+	 * DTS: он связывает дисплейный драйвер с SPI-контроллером и GPIO.
+	 *
+	 * Мы НЕ трогаем &spi4 — он уже включён в базовом DTS с правильными
+	 * pinctrl (spi4_sck_pe12, spi4_mosi_pe14) и cs-gpios (PE11).
+	 */
+	mipi_dbi_st7796s: mipi_dbi_st7796s {
+		compatible = "zephyr,mipi-dbi-spi";
+
+		/* SPI4 уже настроен в базовом DTS:
+		 *   pinctrl-0 = <&spi4_sck_pe12 &spi4_mosi_pe14>
+		 *   cs-gpios  = <&gpioe 11 GPIO_ACTIVE_LOW>        */
+		spi-dev = <&spi4>;
+
+		/* DC/RS pin — переиспользуем PE13 (был у ST7735R) */
+		// dc-gpios = <&gpioe 13 GPIO_ACTIVE_HIGH>;
+		dc-gpios = <&gpioe 9 GPIO_ACTIVE_HIGH>;
+
+		/* RESET pin — PE15 (свободный GPIO на плате).
+		 * Если хочешь использовать другой пин — замени здесь. */
+		reset-gpios = <&gpioe 15 GPIO_ACTIVE_LOW>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* ── Узел дисплея ST7796S ───────────────────────────────────── */
+		st7796s_320x480: st7796s@0 {
+			compatible = "sitronix,st7796s";
+			status = "okay";
+			reg = <0>;
+
+			/* SPI частота: ST7796S поддерживает до 80 МГц,
+			 * но начать лучше с 20 МГц для надёжности.       */
+			mipi-max-frequency = <20000000>;
+
+			/* 4-проводный SPI: CLK + MOSI + CS + отдельный DC */
+			mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";
+
+			width  = <320>;
+			height = <480>;
+
+			/* MADCTL = 0x68 (104 dec)
+			 * D7=0 D6=1 D5=1 D4=0 D3=1 D2=0 D1=0 D0=0
+			 *       MX   MV       BGR
+			 * MX=1 — зеркало по X
+			 * MV=1 — поменять X и Y (поворот 90°)
+			 * BGR=1 — порядок цветов BGR
+			 * Итого: портретный режим 320×480, BGR.
+			 * При необходимости скорректируй под физическую
+			 * ориентацию дисплея.
+			 * Регистр в контроллере дисплея через который задаются параметры:
+			 * D7 - зеркалит по вертикали (Y).
+			 * D6 - зеркалит по горизонтали (X).
+			 * D5 - меняет X и Y местами (поворот на 90°).
+			 * D4 - Направление обновления (сверху вниз или снизу вверх).
+			 * D3 - Порядок цветов в памяти (RGB-BGR).
+			 * D2 - Направление обновления по горизонтали.
+			 * D1 - Не используется (Reserved).
+			 * D0 - Не используется (Reserved).
+			 * D7 D6 D5 D4 D3 D2 D1 D0
+			 * 0  1  1  0  1  0  0  0  ==  104 (перевод из двоичной в десятичную)
+			 * 1  1  0  0  1  0  0  0  ==  200 (перевод из двоичной в десятичную)*/
+			// madctl = <104>;
+			madctl = <72>;
+
+			/* Gamma correction (позитивная кривая) */
+			pgc = [D0 06 0C 0E 09 0B 38 34 48 05 13 14 10 14];
+
+			/* Gamma correction (негативная кривая) */
+			ngc = [D0 01 06 0C 0C 0F 31 3F 47 0A 16 16 17 16];
+		};
+	};
+};
+
+
+
+/* ----------------------|  Touch (XPT2046, отдельная шина SPI2)  |---------------------  */
+/*
+ * Тач-панель посажена на ВТОРОЙ независимый аппаратный SPI-контроллер (spi2),
+ * а не на spi4 вместе с дисплеем — по аналогии с разводкой на ESP32-S3
+ * (там spi2 = дисплей, spi3 = тач). Здесь наоборот исторически: spi4 уже
+ * занят под дисплей в базовом DTS платы, поэтому под тач берём spi2.
+ *
+ * spi2 в базовом mini_stm32h743.dts вообще не используется — весь диапазон
+ * PB12-PB15 полностью свободен и не пересекается ни с SPI1 (PB3/PB4 - NOR
+ * flash), ни с QuadSPI (PB2/PB6), ни с будущей DVP-камерой (PA4/PA6/PA7/
+ * PA8/PB7/PB8/PB9/PC6/PC7/PD3/PE0/PE1/PE4/PE5/PE6).
+ *
+ * Единственное устройство на шине -> гонка между несколькими cs-gpios
+ * физически невозможна, конфликтовать попросту не с чем.
+ *
+ * СХЕМА ПОДКЛЮЧЕНИЯ (XPT2046 (touch) → STM32H743):
+ * ==========================================
+ * T_CLK     →   C10
+ * T_CS      →   D8
+ * T_DIN     →   C12
+ * T_DO      →   C11
+ * T_IRQ     →   D9
+ */
+&sdmmc1 {
+	status = "disabled";
+};
+
+
+&spi3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pc12>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	/* CS программный (через GPIO), не аппаратный NSS — как и у дисплея
+	 * на spi4. Единственное устройство на шине -> один элемент массива. */
+	cs-gpios = <&gpiod 8 GPIO_ACTIVE_LOW>;   /* T_CS */
+
+	xpt2046: xpt2046@0 {
+		compatible = "xptek,xpt2046";
+		/* Единственное устройство на шине spi2 -> индекс 0 в cs-gpios */
+		reg = <0>;
+
+		/* XPT2046 — медленный ADC-контроллер, выше 2 МГц гнать
+		 * SPI обычно не стоит */
+		spi-max-frequency = <2000000>;
+
+		/* T_IRQ (PENIRQ) — открытый сток, активен low.
+		 * PB1 свободен, рядом с остальными пинами тача на порту B. */
+		int-gpios = <&gpiod 9 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+
+		/* Разрешение экрана — как задано в madctl дисплея ST7796S
+		 * (портретная ориентация 320x480) */
+		touchscreen-size-x = <320>;
+		touchscreen-size-y = <480>;
+
+		/* "Сырые" граничные значения АЦП touch-панели.
+		 * Стартовые значения общего вида (12-битный АЦП),
+		 * реальные min/max для конкретной панели уточняются
+		 * калибровкой после первого запуска draw_touch_events. */
+		min-x = <0>;
+		min-y = <0>;
+		max-x = <4095>;
+		max-y = <4095>;
+	};
+};
+
+/ {
+	chosen {
+		/* draw_touch_events ищет touch-устройство именно через
+		 * zephyr,touch (см. README сэмпла) — без изменений */
+		zephyr,touch = &xpt2046;
+	};
+};
+
+
+ /*
+ * WIZnet W5500 connected over SPI2 to the WeAct MiniSTM32H743 Core Board.
+ *
+ * SPI1 (PB3/PB4/PD7, cs=PD6), SPI4 (PE12/PE14, cs=PE11) and QUADSPI
+ * (PB2/PB6/PD11-13/PE2) are already used on this board by the on-board
+ * SPI-NOR flash, the ST7735 LCD and the QSPI-NOR flash respectively (see
+ * mini_stm32h743.dts), so they cannot be reused for the W5500.
+ *
+ * SPI5 does not exist on the VIT6 (LQFP100) package used on this board
+ * (the board only brings out GPIOA..GPIOE), and the only pin options for
+ * SPI6 (PA5/PA6/PA7/PB3/PB4/PB5) physically coincide with the SPI1 pins
+ * already used by the on-board flash, so SPI6 is not usable either.
+ *
+ * SPI2 is free and maps to the unclaimed PB10..PB15 block, so the whole
+ * module (bus + CS + INT + RESET) fits on six consecutive pins:
+/*
+ * СХЕМА ПОДКЛЮЧЕНИЯ (W5500 → STM32H743):
+ * ==========================================
+ *   SCK     → PB10
+ *   MISO    → PB14
+ *   MOSI    → PB15
+ *   CS      → PB12  (soft-NSS, plain GPIO via cs-gpios)
+ *   INT     → PB11  (active low)
+ *   ----  RST     PB13  (active low) - не используется
+ */
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// west build -p always -b mini_stm32h743 -- -DDTC_OVERLAY_FILE=boards/mini_stm32h743.overlay -DEXTRA_CONF_FILE=boards/mini_stm32h743.conf
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb10 &spi2_miso_pb14 &spi2_mosi_pb15>;
+	pinctrl-names = "default";
+	status = "okay";
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; /* PB12 -> W5500 CS */
+
+	w5500: w5500@0 {
+		compatible = "wiznet,w5500";
+		label = "w5500";
+		status = "okay";
+		reg = <0x0>;
+		spi-max-frequency = <8000000>;
+		int-gpios = <&gpiob 11 GPIO_ACTIVE_LOW>;   /* PB11 -> W5500 INT */
+		// reset-gpios = <&gpiob 13 GPIO_ACTIVE_LOW>; /* PB13 -> W5500 RST */
+
+		// zephyr,random-mac-address;
+		local-mac-address = [02 00 00 12 34 56];
+		/* local-mac-address = [02 00 00 12 34 56]; */
+	};
+};
+
+// net iface
+// net dhcpv4 status
+// net ping 192.168.1.1
