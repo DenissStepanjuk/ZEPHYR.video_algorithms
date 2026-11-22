@@ -1,0 +1,61 @@
+* Windows PowerShell:
+# Вывести список USB-устройств, обнаруженных операционной системой Windows.
+usbipd list
+
+# Выполняет привязку USB-устройства к службе USB/IP в Windows.
+usbipd bind --busid 1-9
+
+# Передать USB-устройство с идентификатором 1-9 в среду WSL2 Ubuntu.
+usbipd attach --wsl --busid 1-9
+
+* Ubuntu:
+
+# Путь проекта zephyr под ubuntu в windows
+\\wsl$\Ubuntu\home\stepanjuk\zephyrproject
+
+# Перейти в директорию zephyr
+cd zephyrproject
+
+# Активировать виртуальную среду
+source ~/zephyrproject/.venv/bin/activate
+
+# Открыть Visual Studio Code
+code .
+
+# Перейти в директорию проекта
+cd projects/video
+
+# Собрать проект
+ESP32 S3 CAM N16R8:
+west build -p always -b esp32s3_eye/esp32s3/procpu -- -DDTC_OVERLAY_FILE=boards/esp32s3_eye.overlay -DEXTRA_CONF_FILE=boards/esp32s3_eye.conf
+
+west flash
+
+screen /dev/ttyACM0 115200
+
+mini_stm32h743:
+west build -p always -b mini_stm32h743 -- -DDTC_OVERLAY_FILE=boards/mini_stm32h743.overlay -DEXTRA_CONF_FILE=boards/mini_stm32h743.conf
+
+sudo -E /home/stepanjuk/zephyrproject/.venv/bin/west flash
+
+screen /dev/ttyACM0 115200
+
+
+
+
+ESP32 S3 CAM N16R8 
+https://docs.zephyrproject.org/latest/boards/espressif/esp32s3_devkitc/doc/index.html
+https://github.com/zephyrproject-rtos/zephyr/tree/main/boards/espressif/esp32s3_devkitc
+
+mini_stm32h743:
+https://docs.zephyrproject.org/latest/boards/weact/mini_stm32h743/doc/index.html
+https://github.com/zephyrproject-rtos/zephyr/tree/main/boards/weact/mini_stm32h743
+
+Display:
+https://www.lcdwiki.com/4.0inch_SPI_Module_ST7796
+st7796s
+https://docs.zephyrproject.org/latest/build/dts/api/bindings/display/sitronix%2Cst7796s.html
+https://github.com/zephyrproject-rtos/zephyr/blob/main/drivers/display/display_st7796s.h
+XPT2046
+https://docs.zephyrproject.org/latest/build/dts/api/bindings/input/xptek%2Cxpt2046.html
+https://github.com/zephyrproject-rtos/zephyr/blob/main/drivers/input/input_xpt2046.c
