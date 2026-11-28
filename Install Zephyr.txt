@@ -8,7 +8,7 @@ Ubuntu:
 https://apps.microsoft.com/detail/9pdxgncfsczv?hl=ru-RU&gl=EE&ocid=pdpshare
 
 Getting started Zephyr:
-https://docs.zephyrproject.org/latest/develop/getting_started/index.html
+https://docs.zephyrproject.org/4.3.0/develop/getting_started/index.html
 
 
 Подключение libmpix:
